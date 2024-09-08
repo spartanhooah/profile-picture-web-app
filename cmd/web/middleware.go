@@ -1,4 +1,4 @@
-package main
+package web
 
 import (
 	"context"
@@ -13,11 +13,11 @@ type contextKey string
 
 const contextUserKey contextKey = "user_ip"
 
-func (app *application) ipFromContext(ctx context.Context) string {
+func (app *Application) ipFromContext(ctx context.Context) string {
 	return ctx.Value(contextUserKey).(string)
 }
 
-func (app *application) addIPToContext(next http.Handler) http.Handler {
+func (app *Application) AddIPToContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
 		var ctx = context.Background()
 		log.Println("Ctx is a", reflect.TypeOf(ctx))

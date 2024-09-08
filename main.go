@@ -1,18 +1,17 @@
 package main
 
 import (
+	"github.com/spartanhooah/profile-picture-web/cmd/web"
 	"log"
 	"net/http"
 )
 
-type application struct{}
-
 func main() {
 	// set up an app config
-	app := application{}
+	app := web.Application{}
 
 	// get application routes
-	mux := app.routes()
+	mux := app.Routes()
 
 	// print out a message
 	log.Println("Starting server on port 8080")

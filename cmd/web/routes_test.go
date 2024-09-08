@@ -1,4 +1,4 @@
-package main
+package web
 
 import (
 	"github.com/go-chi/chi/v5"
@@ -16,8 +16,8 @@ func Test_application_routes(t *testing.T) {
 		{"/static/*", "GET"},
 	}
 
-	var app application
-	mux := app.routes()
+	var app Application
+	mux := app.Routes()
 
 	chiRoutes := mux.(chi.Routes)
 

@@ -1,4 +1,4 @@
-package main
+package web
 
 import (
 	"html/template"
@@ -8,7 +8,7 @@ import (
 
 var pathToTemplates = "./templates/"
 
-func (app *application) Home(response http.ResponseWriter, req *http.Request) {
+func (app *Application) Home(response http.ResponseWriter, req *http.Request) {
 	_ = app.Render(response, req, "home.page.gohtml", &TemplateData{})
 }
 
@@ -17,7 +17,7 @@ type TemplateData struct {
 	Data map[string]any
 }
 
-func (app *application) Render(resp http.ResponseWriter, req *http.Request, t string, data *TemplateData) error {
+func (app *Application) Render(resp http.ResponseWriter, req *http.Request, t string, data *TemplateData) error {
 	// parse the template from disk
 	parsedTemplate, err := template.ParseFiles(path.Join(pathToTemplates, t))
 

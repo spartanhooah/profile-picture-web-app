@@ -1,4 +1,4 @@
-package main
+package web
 
 import (
 	"github.com/go-chi/chi/v5"
@@ -6,12 +6,12 @@ import (
 	"net/http"
 )
 
-func (app *application) routes() http.Handler {
+func (app *Application) Routes() http.Handler {
 	mux := chi.NewRouter()
 
 	// register middleware
 	mux.Use(middleware.Recoverer)
-	mux.Use(app.addIPToContext)
+	mux.Use(app.AddIPToContext)
 
 	// register routes
 	mux.Get("/", app.Home)

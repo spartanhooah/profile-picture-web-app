@@ -1,4 +1,4 @@
-package main
+package web
 
 import (
 	"net/http"
@@ -16,8 +16,8 @@ func Test_application_handlers(t *testing.T) {
 		{"404", "/fish", http.StatusNotFound},
 	}
 
-	var app application
-	routes := app.routes()
+	var app Application
+	routes := app.Routes()
 
 	// create a test server
 	ts := httptest.NewTLSServer(routes)
