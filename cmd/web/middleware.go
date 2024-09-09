@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"reflect"
 )
 
 type contextKey string
@@ -19,8 +18,6 @@ func (app *Application) ipFromContext(ctx context.Context) string {
 
 func (app *Application) AddIPToContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
-		var ctx = context.Background()
-		log.Println("Ctx is a", reflect.TypeOf(ctx))
 		ip, err := getIP(req)
 
 		if err != nil {
@@ -30,15 +27,9 @@ func (app *Application) AddIPToContext(next http.Handler) http.Handler {
 			if len(ip) == 0 {
 				ip = "unknown"
 			}
-
-			log.Println("First attempt, got an ip:", ip)
-
-			ctx = context.WithValue(ctx, contextUserKey, ip)
-		} else {
-			log.Println("second attempt, got an ip:", ip)
-			ctx = context.WithValue(ctx, contextUserKey, ip)
 		}
 
+		ctx := context.WithValue(req.Context(), contextUserKey, ip)
 		next.ServeHTTP(resp, req.WithContext(ctx))
 	})
 }

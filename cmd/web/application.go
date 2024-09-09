@@ -1,3 +1,7 @@
 package web
 
-type Application struct{}
+import "github.com/alexedwards/scs/v2"
+
+type Application struct {
+	Session *scs.SessionManager
+}

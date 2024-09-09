@@ -12,9 +12,11 @@ func (app *Application) Routes() http.Handler {
 	// register middleware
 	mux.Use(middleware.Recoverer)
 	mux.Use(app.AddIPToContext)
+	mux.Use(app.Session.LoadAndSave)
 
 	// register routes
 	mux.Get("/", app.Home)
+	mux.Post("/login", app.Login)
 
 	// static assets
 	fileServer := http.FileServer(http.Dir("./static/"))

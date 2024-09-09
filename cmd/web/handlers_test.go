@@ -1,8 +1,11 @@
 package web
 
 import (
+	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -16,7 +19,6 @@ func Test_application_handlers(t *testing.T) {
 		{"404", "/fish", http.StatusNotFound},
 	}
 
-	var app Application
 	routes := app.Routes()
 
 	// create a test server
@@ -38,4 +40,43 @@ func Test_application_handlers(t *testing.T) {
 			t.Errorf("Test case %s failed: expected %d, got %d", test.name, test.expectedStatusCode, resp.StatusCode)
 		}
 	}
+}
+
+func Test_application_Home(t *testing.T) {
+	req, _ := http.NewRequest("GET", "/", nil)
+	req = addContextAndSessionToRequest(req, app)
+	resp := httptest.NewRecorder()
+	// not sure what this does
+	oldPath := pathToTemplates
+	defer func() {
+		pathToTemplates = oldPath
+	}()
+	pathToTemplates = "./../../templates/"
+
+	// back to regular stuff
+	handler := http.HandlerFunc(app.Home)
+
+	handler.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Errorf("Test case failed: expected %d, got %d", resp.Code, http.StatusOK)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+
+	if !strings.Contains(string(body), "<small>From session:") {
+		t.Error("Did not find correct text in HTML")
+	}
+}
+
+func getCtx(req *http.Request) context.Context {
+	return context.WithValue(req.Context(), contextUserKey, "unknown")
+}
+
+func addContextAndSessionToRequest(req *http.Request, app Application) *http.Request {
+	req = req.WithContext(getCtx(req))
+
+	ctx, _ := app.Session.Load(req.Context(), req.Header.Get("X-Session"))
+
+	return req.WithContext(ctx)
 }
