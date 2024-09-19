@@ -1,7 +1,7 @@
 package web
 
 import (
-	"fmt"
+	"github.com/spartanhooah/profile-picture-web/data"
 	"html/template"
 	"log"
 	"net/http"
@@ -24,13 +24,19 @@ func (app *Application) Home(resp http.ResponseWriter, req *http.Request) {
 	_ = app.Render(resp, req, "home.page.gohtml", &TemplateData{Data: td})
 }
 
-type TemplateData struct {
-	IP   string
-	Data map[string]any
+func (app *Application) Profile(resp http.ResponseWriter, req *http.Request) {
+	_ = app.Render(resp, req, "profile.page.gohtml", &TemplateData{})
 }
 
-func (app *Application) Render(resp http.ResponseWriter, req *http.Request, t string, data *TemplateData) error {
-	// parse the template from disk
+type TemplateData struct {
+	IP    string
+	Data  map[string]any
+	Error string
+	Flash string
+	User  data.User
+}
+
+func (app *Application) Render(resp http.ResponseWriter, req *http.Request, t string, td *TemplateData) error {
 	parsedTemplate, err := template.ParseFiles(path.Join(pathToTemplates, t), path.Join(pathToTemplates, "base.layout.gohtml"))
 
 	if err != nil {
@@ -38,10 +44,13 @@ func (app *Application) Render(resp http.ResponseWriter, req *http.Request, t st
 		return err
 	}
 
-	data.IP = app.ipFromContext(req.Context())
+	td.IP = app.ipFromContext(req.Context())
 
-	// execute the template, passing data if any
-	err = parsedTemplate.Execute(resp, data)
+	td.Error = app.Session.PopString(req.Context(), "error")
+	td.Flash = app.Session.PopString(req.Context(), "flash")
+
+	// execute the template, passing template data if any
+	err = parsedTemplate.Execute(resp, td)
 
 	if err != nil {
 		return err
@@ -63,13 +72,41 @@ func (app *Application) Login(resp http.ResponseWriter, req *http.Request) {
 	form.Required("email", "password")
 
 	if !form.Valid() {
-		fmt.Fprintln(resp, "failed validation")
+		// redirect to login page
+		app.Session.Put(req.Context(), "error", "Invalid login credentials")
+		http.Redirect(resp, req, "/", http.StatusSeeOther)
+		return
 	}
 
 	email := req.Form.Get("email")
 	password := req.Form.Get("password")
 
-	log.Println(email, password)
+	user, err := app.DB.GetUserByEmail(email)
 
-	fmt.Fprint(resp, email)
+	if err != nil {
+		app.Session.Put(req.Context(), "error", "Invalid login!")
+		http.Redirect(resp, req, "/", http.StatusSeeOther)
+		return
+	}
+
+	if !app.authenticate(req, user, password) {
+		app.Session.Put(req.Context(), "error", "Invalid login!")
+		http.Redirect(resp, req, "/", http.StatusSeeOther)
+	}
+
+	// prevent fixation attack
+	_ = app.Session.RenewToken(req.Context())
+
+	app.Session.Put(req.Context(), "flash", "Successfully logged in")
+	http.Redirect(resp, req, "/user/profile", http.StatusSeeOther)
+}
+
+func (app *Application) authenticate(req *http.Request, user *data.User, password string) bool {
+	if valid, err := user.PasswordMatches(password); err != nil || !valid {
+		return false
+	}
+
+	app.Session.Put(req.Context(), "user", user)
+
+	return true
 }

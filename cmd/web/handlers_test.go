@@ -2,21 +2,26 @@ package web
 
 import (
 	"context"
+	"github.com/spartanhooah/profile-picture-web/data"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
 
 func Test_application_handlers(t *testing.T) {
 	var tests = []struct {
-		name               string
-		url                string
-		expectedStatusCode int
+		name                    string
+		url                     string
+		expectedStatusCode      int
+		expectedUrl             string
+		expectedFirstStatusCode int
 	}{
-		{"home", "/", http.StatusOK},
-		{"404", "/fish", http.StatusNotFound},
+		{"home", "/", http.StatusOK, "/", http.StatusOK},
+		{"404", "/fish", http.StatusNotFound, "/fish", http.StatusNotFound},
+		{"profile", "/user/profile", http.StatusOK, "/", http.StatusTemporaryRedirect},
 	}
 
 	routes := app.Routes()
@@ -25,7 +30,10 @@ func Test_application_handlers(t *testing.T) {
 	ts := httptest.NewTLSServer(routes)
 	defer ts.Close()
 
+	client := ts.Client()
+
 	for _, test := range tests {
+		client.CheckRedirect = nil
 		resp, err := ts.Client().Get(ts.URL + test.url)
 
 		if err != nil {
@@ -34,7 +42,21 @@ func Test_application_handlers(t *testing.T) {
 		}
 
 		if resp.StatusCode != test.expectedStatusCode {
-			t.Errorf("Test case %s failed: expected %d, got %d", test.name, test.expectedStatusCode, resp.StatusCode)
+			t.Errorf("Test case %s failed: expected status code %d, got %d", test.name, test.expectedStatusCode, resp.StatusCode)
+		}
+
+		if resp.Request.URL.Path != test.expectedUrl {
+			t.Errorf("Test case %s failed: expected final URL of  %s, got %s", test.name, test.expectedUrl, resp.Request.URL.Path)
+		}
+
+		client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		}
+
+		resp2, _ := client.Get(ts.URL + test.url)
+
+		if resp2.StatusCode != test.expectedFirstStatusCode {
+			t.Errorf("Test case %s failed: expected first status code %d, got %d", test.name, test.expectedFirstStatusCode, resp2.StatusCode)
 		}
 	}
 }
@@ -90,6 +112,113 @@ func Test_Application_renderWithBadTemplate(t *testing.T) {
 
 	if err == nil {
 		t.Error("Expected an error")
+	}
+
+	pathToTemplates = "./../../templates/"
+}
+
+func Test_Application_Login(t *testing.T) {
+	var tests = []struct {
+		name               string
+		postedData         url.Values
+		expectedStatusCode int
+		expectedUrl        string
+	}{
+		{
+			"valid login",
+			url.Values{
+				"email":    {"admin@example.com"},
+				"password": {"secret"},
+			},
+			http.StatusSeeOther,
+			"/user/profile",
+		},
+		{
+			"missing form data",
+			url.Values{
+				"email":    {""},
+				"password": {""},
+			},
+			http.StatusSeeOther,
+			"/",
+		},
+		{
+			"bad credentials",
+			url.Values{
+				"email":    {"admin@example.com"},
+				"password": {"wrong"},
+			},
+			http.StatusSeeOther,
+			"/",
+		},
+		{
+			"user not found",
+			url.Values{
+				"email":    {"user@test.com"},
+				"password": {"password"},
+			},
+			http.StatusSeeOther,
+			"/",
+		},
+	}
+
+	for _, test := range tests {
+		req, _ := http.NewRequest("POST", "/login", strings.NewReader(test.postedData.Encode()))
+		req = addContextAndSessionToRequest(req, app)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp := httptest.NewRecorder()
+		handler := http.HandlerFunc(app.Login)
+
+		handler.ServeHTTP(resp, req)
+
+		if resp.Code != test.expectedStatusCode {
+			t.Errorf("Test case %s failed: expected status %d, got %d", test.name, test.expectedStatusCode, resp.Code)
+		}
+
+		actualUrl, err := resp.Result().Location()
+
+		if err == nil {
+			if actualUrl.String() != test.expectedUrl {
+				t.Errorf("Test case %s failed: expected url %s, got %s", test.name, test.expectedUrl, actualUrl.String())
+			}
+		} else {
+			t.Errorf("%s: no location header set", test.name)
+		}
+	}
+}
+
+func Test_Application_auth(t *testing.T) {
+	nextHandler := http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+
+	})
+
+	var tests = []struct {
+		name   string
+		isAuth bool
+	}{
+		{"logged in", true},
+		{"not logged in", false},
+	}
+
+	for _, test := range tests {
+		handlerToTest := app.auth(nextHandler)
+		req := httptest.NewRequest(http.MethodGet, "http://testing", nil)
+		req = addContextAndSessionToRequest(req, app)
+
+		if test.isAuth {
+			app.Session.Put(req.Context(), "user", data.User{ID: 1})
+		}
+
+		response := httptest.NewRecorder()
+		handlerToTest.ServeHTTP(response, req)
+
+		if test.isAuth && response.Code != http.StatusOK {
+			t.Errorf("Test case %s failed: expected status %d, got %d", test.name, http.StatusOK, response.Code)
+		}
+
+		if !test.isAuth && response.Code != http.StatusTemporaryRedirect {
+			t.Errorf("Test case %s failed: expected status %d, got %d", test.name, http.StatusTemporaryRedirect, response.Code)
+		}
 	}
 }
 

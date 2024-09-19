@@ -18,6 +18,13 @@ func (app *Application) Routes() http.Handler {
 	mux.Get("/", app.Home)
 	mux.Post("/login", app.Login)
 
+	// add custom middleware to a route
+	mux.Route("/user", func(mux chi.Router) {
+		mux.Use(app.auth)
+		// /user is already included
+		mux.Get("/profile", app.Profile)
+	})
+
 	// static assets
 	fileServer := http.FileServer(http.Dir("./static/"))
 	mux.Handle("/static/*", http.StripPrefix("/static/", fileServer))
