@@ -1,13 +1,21 @@
 package web
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"github.com/spartanhooah/profile-picture-web/data"
+	"image"
+	"image/png"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -222,6 +230,91 @@ func Test_Application_auth(t *testing.T) {
 	}
 }
 
+func Test_Application_UploadFiles(t *testing.T) {
+	// set up pipes
+	pr, pw := io.Pipe()
+
+	// create a new writer of type *io.Writer
+	writer := multipart.NewWriter(pw)
+
+	// create a waitgroup and add 1 to it; only necessary when doing a table test
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+
+	// simulate uploading a file using a goroutine and the writer
+	go simulatePNGUpload("./testdata/img.png", writer, t, wg)
+
+	// read from the pipe which receives data
+	request := httptest.NewRequest(http.MethodPost, "/", pr)
+	request.Header.Add("Content-Type", writer.FormDataContentType())
+
+	// call UploadFiles
+	uploadedFiles, err := UploadFiles(request, "./testdata/uploads/")
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	// assertions
+	imagePath := fmt.Sprintf("./testdata/uploads/%s", uploadedFiles[0].OriginalFileName)
+	if _, err := os.Stat(imagePath); os.IsNotExist(err) {
+		t.Errorf("Expected file to exist: %s", err.Error())
+	}
+
+	// cleanup
+	_ = os.Remove(imagePath)
+
+	wg.Wait()
+}
+
+func Test_Application_UploadProfilePicture(t *testing.T) {
+	uploadPath = "./testdata/uploads"
+	filePath := "./testdata/img.png"
+
+	// specify a field name for the form
+	fieldName := "file"
+
+	// create a bytes.Buffer to act as the request body
+	body := new(bytes.Buffer)
+
+	// create a new writer
+	writer := multipart.NewWriter(body)
+
+	file, err := os.Open(filePath)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := writer.CreateFormFile(fieldName, filePath)
+
+	if _, err := io.Copy(w, file); err != nil {
+		t.Fatal(err)
+	}
+
+	writer.Close()
+
+	request := httptest.NewRequest(http.MethodPost, "/", body)
+
+	request = addContextAndSessionToRequest(request, app)
+
+	app.Session.Put(request.Context(), "user", data.User{ID: 1})
+
+	request.Header.Add("Content-Type", writer.FormDataContentType())
+
+	response := httptest.NewRecorder()
+
+	handler := http.HandlerFunc(app.UploadProfilePicture)
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther {
+		t.Errorf("Expected status %d, got %d", http.StatusSeeOther, response.Code)
+	}
+
+	_ = os.Remove(uploadPath + "/img.png")
+}
+
 func getCtx(req *http.Request) context.Context {
 	return context.WithValue(req.Context(), contextUserKey, "unknown")
 }
@@ -232,4 +325,39 @@ func addContextAndSessionToRequest(req *http.Request, app Application) *http.Req
 	ctx, _ := app.Session.Load(req.Context(), req.Header.Get("X-Session"))
 
 	return req.WithContext(ctx)
+}
+
+func simulatePNGUpload(fileToUpload string, writer *multipart.Writer, t *testing.T, wg *sync.WaitGroup) {
+	defer writer.Close()
+	defer wg.Done()
+
+	// create form data field "file" with filename being the value
+	part, err := writer.CreateFormFile("file", path.Base(fileToUpload))
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	// open the actual file
+	f, err := os.Open(fileToUpload)
+
+	if err != nil {
+		t.Error(err)
+	}
+
+	defer f.Close()
+
+	// decode the image
+	img, _, err := image.Decode(f)
+
+	if err != nil {
+		t.Error("error decoding image:", err)
+	}
+
+	// write the image to the io.Writer
+	err = png.Encode(part, img)
+
+	if err != nil {
+		t.Error(err)
+	}
 }

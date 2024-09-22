@@ -23,6 +23,7 @@ func (app *Application) Routes() http.Handler {
 		mux.Use(app.auth)
 		// /user is already included
 		mux.Get("/profile", app.Profile)
+		mux.Post("/upload-profile-picture", app.UploadProfilePicture)
 	})
 
 	// static assets
